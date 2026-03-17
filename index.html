@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>強化ブロック崩し</title>
+<title>強化ブロック崩し ver2</title>
 <style>
 body {
     margin: 0;
@@ -25,10 +25,8 @@ canvas {
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// ===== ボール（複数対応） =====
-let balls = [
-    { x: 300, y: 300, dx: 3, dy: -3 }
-];
+// ===== ボール =====
+let balls = [{ x: 300, y: 300, dx: 3, dy: -3 }];
 const ballRadius = 6;
 
 // ===== パドル =====
@@ -61,6 +59,9 @@ for (let c = 0; c < colCount; c++) {
 // ===== アイテム =====
 let items = [];
 let itemActive = false;
+
+// ===== 下の穴 =====
+const holeWidth = 120;
 
 // ===== 入力 =====
 document.addEventListener("keydown", e => {
@@ -105,12 +106,23 @@ function drawBricks() {
 
 function drawWalls() {
     ctx.fillStyle = "#888";
+
     // 左
     ctx.fillRect(0, 0, 10, canvas.height);
     // 右
     ctx.fillRect(canvas.width - 10, 0, 10, canvas.height);
     // 上
     ctx.fillRect(0, 0, canvas.width, 10);
+
+    // 下（中央に穴）
+    let holeX = canvas.width / 2 - holeWidth / 2;
+
+    // 左下壁
+    ctx.fillRect(0, canvas.height - 10, holeX, 10);
+
+    // 右下壁
+    ctx.fillRect(holeX + holeWidth, canvas.height - 10,
+        canvas.width - (holeX + holeWidth), 10);
 }
 
 function drawItems() {
@@ -122,12 +134,23 @@ function drawItems() {
 
 // ===== 衝突 =====
 function collision(ball) {
-    // 壁
+    // 左右壁
     if (ball.x < 10 + ballRadius || ball.x > canvas.width - 10 - ballRadius) {
         ball.dx *= -1;
     }
+
+    // 上
     if (ball.y < 10 + ballRadius) {
         ball.dy *= -1;
+    }
+
+    // 下（穴判定）
+    let holeX = canvas.width / 2 - holeWidth / 2;
+
+    if (ball.y > canvas.height - 10 - ballRadius) {
+        if (ball.x < holeX || ball.x > holeX + holeWidth) {
+            ball.dy *= -1; // 壁に当たる
+        }
     }
 
     // パドル
@@ -152,7 +175,6 @@ function collision(ball) {
                     b.status = 0;
                     destroyedCount++;
 
-                    // 一定数でアイテム出現
                     if (destroyedCount % 10 === 0 && !itemActive) {
                         items.push({ x: b.x, y: b.y, dy: 2 });
                         itemActive = true;
@@ -163,18 +185,16 @@ function collision(ball) {
     }
 }
 
-// ===== アイテム処理 =====
+// ===== アイテム =====
 function updateItems() {
     items.forEach((item, index) => {
         item.y += item.dy;
 
-        // パドル取得
         if (
             item.y > canvas.height - paddleHeight &&
             item.x > paddleX &&
             item.x < paddleX + paddleWidth
         ) {
-            // ボール3倍
             let newBalls = [];
             balls.forEach(b => {
                 newBalls.push({ ...b });
@@ -186,7 +206,6 @@ function updateItems() {
             itemActive = false;
         }
 
-        // 落下消滅
         if (item.y > canvas.height) {
             items.splice(index, 1);
             itemActive = false;
@@ -210,7 +229,7 @@ function draw() {
         ball.x += ball.dx;
         ball.y += ball.dy;
 
-        // 落下削除
+        // 穴から落ちたら削除
         if (ball.y > canvas.height) {
             balls.splice(i, 1);
         }
@@ -218,7 +237,6 @@ function draw() {
 
     updateItems();
 
-    // パドル移動
     if (rightPressed && paddleX < canvas.width - paddleWidth - 10) {
         paddleX += 6;
     }
@@ -226,7 +244,6 @@ function draw() {
         paddleX -= 6;
     }
 
-    // ゲームオーバー
     if (balls.length === 0) {
         alert("ゲームオーバー");
         location.reload();
