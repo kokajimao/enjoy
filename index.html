@@ -2,56 +2,55 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ブロック崩し</title>
+<title>強化ブロック崩し</title>
 <style>
-    body {
-        margin: 0;
-        background: #111;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-    }
-    canvas {
-        background: #222;
-        display: block;
-    }
+body {
+    margin: 0;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+canvas {
+    background: #222;
+}
 </style>
 </head>
 <body>
 
-<canvas id="gameCanvas" width="480" height="320"></canvas>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// ボール
-let ballRadius = 8;
-let x = canvas.width / 2;
-let y = canvas.height - 30;
-let dx = 2;
-let dy = -2;
+// ===== ボール（複数対応） =====
+let balls = [
+    { x: 300, y: 300, dx: 3, dy: -3 }
+];
+const ballRadius = 6;
 
-// パドル（板）
+// ===== パドル =====
+let paddleWidth = 100;
 let paddleHeight = 10;
-let paddleWidth = 80;
-let paddleX = (canvas.width - paddleWidth) / 2;
+let paddleX = 250;
 
-// キー操作
 let rightPressed = false;
 let leftPressed = false;
 
-// ブロック
-let rowCount = 4;
-let colCount = 6;
-let brickWidth = 60;
-let brickHeight = 15;
-let brickPadding = 10;
-let brickOffsetTop = 30;
-let brickOffsetLeft = 30;
+// ===== ブロック =====
+const rowCount = 8;
+const colCount = 10;
+const brickWidth = 50;
+const brickHeight = 15;
+const padding = 5;
+const offsetTop = 40;
+const offsetLeft = 25;
 
 let bricks = [];
+let destroyedCount = 0;
+
 for (let c = 0; c < colCount; c++) {
     bricks[c] = [];
     for (let r = 0; r < rowCount; r++) {
@@ -59,105 +58,179 @@ for (let c = 0; c < colCount; c++) {
     }
 }
 
-// キーイベント
-document.addEventListener("keydown", (e) => {
-    if (e.key === "Right" || e.key === "ArrowRight") rightPressed = true;
-    if (e.key === "Left" || e.key === "ArrowLeft") leftPressed = true;
+// ===== アイテム =====
+let items = [];
+let itemActive = false;
+
+// ===== 入力 =====
+document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight") rightPressed = true;
+    if (e.key === "ArrowLeft") leftPressed = true;
+});
+document.addEventListener("keyup", e => {
+    if (e.key === "ArrowRight") rightPressed = false;
+    if (e.key === "ArrowLeft") leftPressed = false;
 });
 
-document.addEventListener("keyup", (e) => {
-    if (e.key === "Right" || e.key === "ArrowRight") rightPressed = false;
-    if (e.key === "Left" || e.key === "ArrowLeft") leftPressed = false;
-});
-
-// 描画系
-function drawBall() {
+// ===== 描画 =====
+function drawBall(ball) {
     ctx.beginPath();
-    ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
     ctx.fillStyle = "#00ffff";
     ctx.fill();
     ctx.closePath();
 }
 
 function drawPaddle() {
-    ctx.beginPath();
-    ctx.rect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
     ctx.fillStyle = "#00ff88";
-    ctx.fill();
-    ctx.closePath();
+    ctx.fillRect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
 }
 
 function drawBricks() {
     for (let c = 0; c < colCount; c++) {
         for (let r = 0; r < rowCount; r++) {
-            if (bricks[c][r].status === 1) {
-                let brickX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
-                let brickY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
-                bricks[c][r].x = brickX;
-                bricks[c][r].y = brickY;
+            let b = bricks[c][r];
+            if (b.status === 1) {
+                let x = c * (brickWidth + padding) + offsetLeft;
+                let y = r * (brickHeight + padding) + offsetTop;
+                b.x = x;
+                b.y = y;
 
-                ctx.beginPath();
-                ctx.rect(brickX, brickY, brickWidth, brickHeight);
                 ctx.fillStyle = "#ff6666";
-                ctx.fill();
-                ctx.closePath();
+                ctx.fillRect(x, y, brickWidth, brickHeight);
             }
         }
     }
 }
 
-// 衝突判定
-function collisionDetection() {
+function drawWalls() {
+    ctx.fillStyle = "#888";
+    // 左
+    ctx.fillRect(0, 0, 10, canvas.height);
+    // 右
+    ctx.fillRect(canvas.width - 10, 0, 10, canvas.height);
+    // 上
+    ctx.fillRect(0, 0, canvas.width, 10);
+}
+
+function drawItems() {
+    items.forEach(item => {
+        ctx.fillStyle = "yellow";
+        ctx.fillRect(item.x, item.y, 15, 15);
+    });
+}
+
+// ===== 衝突 =====
+function collision(ball) {
+    // 壁
+    if (ball.x < 10 + ballRadius || ball.x > canvas.width - 10 - ballRadius) {
+        ball.dx *= -1;
+    }
+    if (ball.y < 10 + ballRadius) {
+        ball.dy *= -1;
+    }
+
+    // パドル
+    if (ball.y > canvas.height - paddleHeight - ballRadius) {
+        if (ball.x > paddleX && ball.x < paddleX + paddleWidth) {
+            ball.dy *= -1;
+        }
+    }
+
+    // ブロック
     for (let c = 0; c < colCount; c++) {
         for (let r = 0; r < rowCount; r++) {
             let b = bricks[c][r];
             if (b.status === 1) {
-                if (x > b.x && x < b.x + brickWidth &&
-                    y > b.y && y < b.y + brickHeight) {
-                    dy = -dy;
+                if (
+                    ball.x > b.x &&
+                    ball.x < b.x + brickWidth &&
+                    ball.y > b.y &&
+                    ball.y < b.y + brickHeight
+                ) {
+                    ball.dy *= -1;
                     b.status = 0;
+                    destroyedCount++;
+
+                    // 一定数でアイテム出現
+                    if (destroyedCount % 10 === 0 && !itemActive) {
+                        items.push({ x: b.x, y: b.y, dy: 2 });
+                        itemActive = true;
+                    }
                 }
             }
         }
     }
 }
 
-// メインループ
+// ===== アイテム処理 =====
+function updateItems() {
+    items.forEach((item, index) => {
+        item.y += item.dy;
+
+        // パドル取得
+        if (
+            item.y > canvas.height - paddleHeight &&
+            item.x > paddleX &&
+            item.x < paddleX + paddleWidth
+        ) {
+            // ボール3倍
+            let newBalls = [];
+            balls.forEach(b => {
+                newBalls.push({ ...b });
+                newBalls.push({ ...b, dx: -b.dx });
+            });
+            balls = balls.concat(newBalls);
+
+            items.splice(index, 1);
+            itemActive = false;
+        }
+
+        // 落下消滅
+        if (item.y > canvas.height) {
+            items.splice(index, 1);
+            itemActive = false;
+        }
+    });
+}
+
+// ===== メイン =====
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawBall();
-    drawPaddle();
+    drawWalls();
     drawBricks();
-    collisionDetection();
+    drawPaddle();
+    drawItems();
 
-    // 壁反射
-    if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
-        dx = -dx;
-    }
-    if (y + dy < ballRadius) {
-        dy = -dy;
-    }
-    // 下（ミス）
-    else if (y + dy > canvas.height - ballRadius) {
-        if (x > paddleX && x < paddleX + paddleWidth) {
-            dy = -dy;
-        } else {
-            alert("ゲームオーバー");
-            document.location.reload();
+    balls.forEach((ball, i) => {
+        drawBall(ball);
+        collision(ball);
+
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        // 落下削除
+        if (ball.y > canvas.height) {
+            balls.splice(i, 1);
         }
-    }
+    });
+
+    updateItems();
 
     // パドル移動
-    if (rightPressed && paddleX < canvas.width - paddleWidth) {
-        paddleX += 5;
+    if (rightPressed && paddleX < canvas.width - paddleWidth - 10) {
+        paddleX += 6;
     }
-    if (leftPressed && paddleX > 0) {
-        paddleX -= 5;
+    if (leftPressed && paddleX > 10) {
+        paddleX -= 6;
     }
 
-    x += dx;
-    y += dy;
+    // ゲームオーバー
+    if (balls.length === 0) {
+        alert("ゲームオーバー");
+        location.reload();
+    }
 
     requestAnimationFrame(draw);
 }
