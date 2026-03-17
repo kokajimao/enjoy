@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>強化ブロック崩し ver2</title>
+<title>ワープブロック崩し</title>
 <style>
 body {
     margin: 0;
@@ -19,11 +19,27 @@ canvas {
 </head>
 <body>
 
-<canvas id="gameCanvas" width="600" height="400"></canvas>
+<canvas id="gameCanvas" width="600" height="450"></canvas>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+
+// ===== ブロック =====
+const rowCount = 8;
+const colCount = 10;
+const brickWidth = 50;
+const brickHeight = 15;
+const padding = 5;
+const offsetTop = 50;
+const offsetLeft = 50;
+
+const areaWidth = colCount * (brickWidth + padding) - padding;
+const areaHeight = rowCount * (brickHeight + padding) - padding;
+
+// ===== 壁 =====
+const wallThickness = 10;
+const holeWidth = 120;
 
 // ===== ボール =====
 let balls = [{ x: 300, y: 300, dx: 3, dy: -3 }];
@@ -37,15 +53,7 @@ let paddleX = 250;
 let rightPressed = false;
 let leftPressed = false;
 
-// ===== ブロック =====
-const rowCount = 8;
-const colCount = 10;
-const brickWidth = 50;
-const brickHeight = 15;
-const padding = 5;
-const offsetTop = 40;
-const offsetLeft = 25;
-
+// ===== ブロック配列 =====
 let bricks = [];
 let destroyedCount = 0;
 
@@ -60,8 +68,11 @@ for (let c = 0; c < colCount; c++) {
 let items = [];
 let itemActive = false;
 
-// ===== 下の穴 =====
-const holeWidth = 120;
+// ===== 壁座標 =====
+const leftWall = offsetLeft - wallThickness;
+const rightWall = offsetLeft + areaWidth;
+const topWall = offsetTop - wallThickness;
+const bottomWall = offsetTop + areaHeight;
 
 // ===== 入力 =====
 document.addEventListener("keydown", e => {
@@ -74,17 +85,22 @@ document.addEventListener("keyup", e => {
 });
 
 // ===== 描画 =====
-function drawBall(ball) {
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
-    ctx.fillStyle = "#00ffff";
-    ctx.fill();
-    ctx.closePath();
-}
+function drawWalls() {
+    ctx.fillStyle = "#888";
 
-function drawPaddle() {
-    ctx.fillStyle = "#00ff88";
-    ctx.fillRect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
+    ctx.fillRect(leftWall, topWall, wallThickness, areaHeight + wallThickness);
+    ctx.fillRect(rightWall, topWall, wallThickness, areaHeight + wallThickness);
+    ctx.fillRect(leftWall, topWall, areaWidth + wallThickness, wallThickness);
+
+    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
+
+    ctx.fillRect(leftWall, bottomWall, holeX - leftWall, wallThickness);
+    ctx.fillRect(
+        holeX + holeWidth,
+        bottomWall,
+        (leftWall + areaWidth + wallThickness) - (holeX + holeWidth),
+        wallThickness
+    );
 }
 
 function drawBricks() {
@@ -104,25 +120,16 @@ function drawBricks() {
     }
 }
 
-function drawWalls() {
-    ctx.fillStyle = "#888";
+function drawBall(ball) {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "#00ffff";
+    ctx.fill();
+}
 
-    // 左
-    ctx.fillRect(0, 0, 10, canvas.height);
-    // 右
-    ctx.fillRect(canvas.width - 10, 0, 10, canvas.height);
-    // 上
-    ctx.fillRect(0, 0, canvas.width, 10);
-
-    // 下（中央に穴）
-    let holeX = canvas.width / 2 - holeWidth / 2;
-
-    // 左下壁
-    ctx.fillRect(0, canvas.height - 10, holeX, 10);
-
-    // 右下壁
-    ctx.fillRect(holeX + holeWidth, canvas.height - 10,
-        canvas.width - (holeX + holeWidth), 10);
+function drawPaddle() {
+    ctx.fillStyle = "#00ff88";
+    ctx.fillRect(paddleX, canvas.height - paddleHeight - 10, paddleWidth, paddleHeight);
 }
 
 function drawItems() {
@@ -134,27 +141,31 @@ function drawItems() {
 
 // ===== 衝突 =====
 function collision(ball) {
-    // 左右壁
-    if (ball.x < 10 + ballRadius || ball.x > canvas.width - 10 - ballRadius) {
+    if (ball.x < leftWall + wallThickness + ballRadius ||
+        ball.x > rightWall - ballRadius) {
         ball.dx *= -1;
     }
 
-    // 上
-    if (ball.y < 10 + ballRadius) {
+    if (ball.y < topWall + wallThickness + ballRadius) {
         ball.dy *= -1;
     }
 
-    // 下（穴判定）
-    let holeX = canvas.width / 2 - holeWidth / 2;
+    // ★ 穴ワープ
+    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
 
-    if (ball.y > canvas.height - 10 - ballRadius) {
-        if (ball.x < holeX || ball.x > holeX + holeWidth) {
-            ball.dy *= -1; // 壁に当たる
+    if (ball.y > bottomWall + ballRadius) {
+        if (ball.x > holeX && ball.x < holeX + holeWidth) {
+            // 上にワープ
+            ball.y = topWall + wallThickness + 5;
+            ball.dy *= -1;
+        } else {
+            ball.dy *= -1;
         }
     }
 
     // パドル
-    if (ball.y > canvas.height - paddleHeight - ballRadius) {
+    let paddleY = canvas.height - paddleHeight - 10;
+    if (ball.y > paddleY - ballRadius) {
         if (ball.x > paddleX && ball.x < paddleX + paddleWidth) {
             ball.dy *= -1;
         }
@@ -187,14 +198,15 @@ function collision(ball) {
 
 // ===== アイテム =====
 function updateItems() {
-    items.forEach((item, index) => {
+    items.forEach((item, i) => {
         item.y += item.dy;
 
-        if (
-            item.y > canvas.height - paddleHeight &&
+        let paddleY = canvas.height - paddleHeight - 10;
+
+        if (item.y > paddleY &&
             item.x > paddleX &&
-            item.x < paddleX + paddleWidth
-        ) {
+            item.x < paddleX + paddleWidth) {
+
             let newBalls = [];
             balls.forEach(b => {
                 newBalls.push({ ...b });
@@ -202,12 +214,12 @@ function updateItems() {
             });
             balls = balls.concat(newBalls);
 
-            items.splice(index, 1);
+            items.splice(i, 1);
             itemActive = false;
         }
 
         if (item.y > canvas.height) {
-            items.splice(index, 1);
+            items.splice(i, 1);
             itemActive = false;
         }
     });
@@ -222,32 +234,18 @@ function draw() {
     drawPaddle();
     drawItems();
 
-    balls.forEach((ball, i) => {
+    balls.forEach(ball => {
         drawBall(ball);
         collision(ball);
 
         ball.x += ball.dx;
         ball.y += ball.dy;
-
-        // 穴から落ちたら削除
-        if (ball.y > canvas.height) {
-            balls.splice(i, 1);
-        }
     });
 
     updateItems();
 
-    if (rightPressed && paddleX < canvas.width - paddleWidth - 10) {
-        paddleX += 6;
-    }
-    if (leftPressed && paddleX > 10) {
-        paddleX -= 6;
-    }
-
-    if (balls.length === 0) {
-        alert("ゲームオーバー");
-        location.reload();
-    }
+    if (rightPressed) paddleX += 6;
+    if (leftPressed) paddleX -= 6;
 
     requestAnimationFrame(draw);
 }
