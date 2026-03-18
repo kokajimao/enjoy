@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ワープブロック崩し</title>
+<title>狙撃ブロック崩し</title>
 <style>
 body {
     margin: 0;
@@ -41,8 +41,14 @@ const areaHeight = rowCount * (brickHeight + padding) - padding;
 const wallThickness = 10;
 const holeWidth = 120;
 
-// ===== ボール =====
-let balls = [{ x: 300, y: 300, dx: 3, dy: -3 }];
+// ===== 壁座標 =====
+const leftWall = offsetLeft - wallThickness;
+const rightWall = offsetLeft + areaWidth;
+const topWall = offsetTop - wallThickness;
+const bottomWall = offsetTop + areaHeight;
+
+// ===== ボール（外スタート） =====
+let balls = [{ x: 300, y: 420, dx: 3, dy: -3 }];
 const ballRadius = 6;
 
 // ===== パドル =====
@@ -53,7 +59,7 @@ let paddleX = 250;
 let rightPressed = false;
 let leftPressed = false;
 
-// ===== ブロック配列 =====
+// ===== ブロック =====
 let bricks = [];
 let destroyedCount = 0;
 
@@ -67,12 +73,6 @@ for (let c = 0; c < colCount; c++) {
 // ===== アイテム =====
 let items = [];
 let itemActive = false;
-
-// ===== 壁座標 =====
-const leftWall = offsetLeft - wallThickness;
-const rightWall = offsetLeft + areaWidth;
-const topWall = offsetTop - wallThickness;
-const bottomWall = offsetTop + areaHeight;
 
 // ===== 入力 =====
 document.addEventListener("keydown", e => {
@@ -141,54 +141,76 @@ function drawItems() {
 
 // ===== 衝突 =====
 function collision(ball) {
-    if (ball.x < leftWall + wallThickness + ballRadius ||
-        ball.x > rightWall - ballRadius) {
+    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
+
+    // 左右（外でも内でも共通）
+    if (ball.x < ballRadius || ball.x > canvas.width - ballRadius) {
         ball.dx *= -1;
     }
 
-    if (ball.y < topWall + wallThickness + ballRadius) {
+    // 上端
+    if (ball.y < ballRadius) {
         ball.dy *= -1;
     }
 
-    // ★ 穴ワープ
-    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
+    // ===== 壁エリアとの関係 =====
 
-    if (ball.y > bottomWall + ballRadius) {
-        if (ball.x > holeX && ball.x < holeX + holeWidth) {
-            // 上にワープ
-            ball.y = topWall + wallThickness + 5;
-            ball.dy *= -1;
-        } else {
+    // 下→中へ（侵入）
+    if (ball.y < bottomWall && ball.y > bottomWall - 20) {
+        if (ball.x < holeX || ball.x > holeX + holeWidth) {
+            ball.dy *= -1; // 壁
+        }
+    }
+
+    // 中→下へ（脱出）
+    if (ball.y > bottomWall && ball.y < bottomWall + 20) {
+        if (ball.x < holeX || ball.x > holeX + holeWidth) {
             ball.dy *= -1;
         }
     }
 
-    // パドル
+    // 上壁（内部のみ）
+    if (ball.y < topWall + wallThickness && ball.y > topWall) {
+        ball.dy *= -1;
+    }
+
+    // 左右壁（内部）
+    if (
+        ball.y > topWall &&
+        ball.y < bottomWall &&
+        (ball.x < leftWall + wallThickness || ball.x > rightWall)
+    ) {
+        ball.dx *= -1;
+    }
+
+    // パドル（外エリア）
     let paddleY = canvas.height - paddleHeight - 10;
     if (ball.y > paddleY - ballRadius) {
         if (ball.x > paddleX && ball.x < paddleX + paddleWidth) {
-            ball.dy *= -1;
+            ball.dy = -Math.abs(ball.dy);
         }
     }
 
-    // ブロック
-    for (let c = 0; c < colCount; c++) {
-        for (let r = 0; r < rowCount; r++) {
-            let b = bricks[c][r];
-            if (b.status === 1) {
-                if (
-                    ball.x > b.x &&
-                    ball.x < b.x + brickWidth &&
-                    ball.y > b.y &&
-                    ball.y < b.y + brickHeight
-                ) {
-                    ball.dy *= -1;
-                    b.status = 0;
-                    destroyedCount++;
+    // ブロック（内部のみ）
+    if (ball.y > topWall && ball.y < bottomWall) {
+        for (let c = 0; c < colCount; c++) {
+            for (let r = 0; r < rowCount; r++) {
+                let b = bricks[c][r];
+                if (b.status === 1) {
+                    if (
+                        ball.x > b.x &&
+                        ball.x < b.x + brickWidth &&
+                        ball.y > b.y &&
+                        ball.y < b.y + brickHeight
+                    ) {
+                        ball.dy *= -1;
+                        b.status = 0;
+                        destroyedCount++;
 
-                    if (destroyedCount % 10 === 0 && !itemActive) {
-                        items.push({ x: b.x, y: b.y, dy: 2 });
-                        itemActive = true;
+                        if (destroyedCount % 10 === 0 && !itemActive) {
+                            items.push({ x: b.x, y: b.y, dy: 2 });
+                            itemActive = true;
+                        }
                     }
                 }
             }
@@ -203,10 +225,11 @@ function updateItems() {
 
         let paddleY = canvas.height - paddleHeight - 10;
 
-        if (item.y > paddleY &&
+        if (
+            item.y > paddleY &&
             item.x > paddleX &&
-            item.x < paddleX + paddleWidth) {
-
+            item.x < paddleX + paddleWidth
+        ) {
             let newBalls = [];
             balls.forEach(b => {
                 newBalls.push({ ...b });
