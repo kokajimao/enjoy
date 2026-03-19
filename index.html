@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>狙撃ブロック崩し</title>
+<title>ステージ制ブロック崩し</title>
 <style>
 body {
     margin: 0;
@@ -25,30 +25,42 @@ canvas {
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// ===== ブロック =====
-const rowCount = 8;
-const colCount = 10;
+// ===== ステージ定義 =====
+const stages = [
+[
+"1111111111",
+"1111111111",
+"1111111111",
+"1111111111"
+],
+[
+"1000000001",
+"1111111111",
+"1000000001",
+"1111111111"
+],
+[
+"1010101010",
+"0101010101",
+"1111111111",
+"0001110000"
+]
+];
+
+let currentStage = 0;
+
+// ===== ブロックサイズ =====
 const brickWidth = 50;
 const brickHeight = 15;
 const padding = 5;
 const offsetTop = 50;
 const offsetLeft = 50;
 
-const areaWidth = colCount * (brickWidth + padding) - padding;
-const areaHeight = rowCount * (brickHeight + padding) - padding;
-
-// ===== 壁 =====
 const wallThickness = 10;
 const holeWidth = 120;
 
-// ===== 壁座標 =====
-const leftWall = offsetLeft - wallThickness;
-const rightWall = offsetLeft + areaWidth;
-const topWall = offsetTop - wallThickness;
-const bottomWall = offsetTop + areaHeight;
-
-// ===== ボール（外スタート） =====
-let balls = [{ x: 300, y: 420, dx: 3, dy: -3 }];
+// ===== ボール =====
+let balls;
 const ballRadius = 6;
 
 // ===== パドル =====
@@ -59,20 +71,46 @@ let paddleX = 250;
 let rightPressed = false;
 let leftPressed = false;
 
-// ===== ブロック =====
-let bricks = [];
-let destroyedCount = 0;
-
-for (let c = 0; c < colCount; c++) {
-    bricks[c] = [];
-    for (let r = 0; r < rowCount; r++) {
-        bricks[c][r] = { x: 0, y: 0, status: 1 };
-    }
-}
-
 // ===== アイテム =====
 let items = [];
 let itemActive = false;
+let destroyedCount = 0;
+
+// ===== 初期化 =====
+function initStage() {
+    let map = stages[currentStage];
+    bricks = [];
+    destroyedCount = 0;
+
+    for (let c = 0; c < map[0].length; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < map.length; r++) {
+            bricks[c][r] = {
+                status: map[r][c] === "1" ? 1 : 0
+            };
+        }
+    }
+
+    // エリア計算
+    colCount = map[0].length;
+    rowCount = map.length;
+
+    areaWidth = colCount * (brickWidth + padding) - padding;
+    areaHeight = rowCount * (brickHeight + padding) - padding;
+
+    leftWall = offsetLeft - wallThickness;
+    rightWall = offsetLeft + areaWidth;
+    topWall = offsetTop - wallThickness;
+    bottomWall = offsetTop + areaHeight;
+
+    // ボール外スタート
+    balls = [{ x: 300, y: 420, dx: 3, dy: -3 }];
+}
+
+let bricks = [];
+let colCount, rowCount;
+let areaWidth, areaHeight;
+let leftWall, rightWall, topWall, bottomWall;
 
 // ===== 入力 =====
 document.addEventListener("keydown", e => {
@@ -92,22 +130,22 @@ function drawWalls() {
     ctx.fillRect(rightWall, topWall, wallThickness, areaHeight + wallThickness);
     ctx.fillRect(leftWall, topWall, areaWidth + wallThickness, wallThickness);
 
-    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
+    let holeX = leftWall + (areaWidth + wallThickness)/2 - holeWidth/2;
 
-    ctx.fillRect(leftWall, bottomWall, holeX - leftWall, wallThickness);
-    ctx.fillRect(
-        holeX + holeWidth,
-        bottomWall,
-        (leftWall + areaWidth + wallThickness) - (holeX + holeWidth),
-        wallThickness
-    );
+    ctx.fillRect(leftWall, bottomWall, holeX-leftWall, wallThickness);
+    ctx.fillRect(holeX+holeWidth, bottomWall,
+        (leftWall+areaWidth+wallThickness)-(holeX+holeWidth), wallThickness);
 }
 
 function drawBricks() {
+    let remaining = 0;
+
     for (let c = 0; c < colCount; c++) {
         for (let r = 0; r < rowCount; r++) {
             let b = bricks[c][r];
             if (b.status === 1) {
+                remaining++;
+
                 let x = c * (brickWidth + padding) + offsetLeft;
                 let y = r * (brickHeight + padding) + offsetTop;
                 b.x = x;
@@ -116,6 +154,18 @@ function drawBricks() {
                 ctx.fillStyle = "#ff6666";
                 ctx.fillRect(x, y, brickWidth, brickHeight);
             }
+        }
+    }
+
+    // クリア判定
+    if (remaining === 0) {
+        currentStage++;
+        if (currentStage >= stages.length) {
+            alert("クリア！");
+            location.reload();
+        } else {
+            alert("ステージ " + (currentStage + 1));
+            initStage();
         }
     }
 }
@@ -141,40 +191,27 @@ function drawItems() {
 
 // ===== 衝突 =====
 function collision(ball) {
-    let holeX = leftWall + (areaWidth + wallThickness) / 2 - holeWidth / 2;
+    let holeX = leftWall + (areaWidth + wallThickness)/2 - holeWidth/2;
 
-    // 左右（外でも内でも共通）
     if (ball.x < ballRadius || ball.x > canvas.width - ballRadius) {
         ball.dx *= -1;
     }
-
-    // 上端
     if (ball.y < ballRadius) {
         ball.dy *= -1;
     }
 
-    // ===== 壁エリアとの関係 =====
-
-    // 下→中へ（侵入）
     if (ball.y < bottomWall && ball.y > bottomWall - 20) {
-        if (ball.x < holeX || ball.x > holeX + holeWidth) {
-            ball.dy *= -1; // 壁
-        }
+        if (ball.x < holeX || ball.x > holeX + holeWidth) ball.dy *= -1;
     }
 
-    // 中→下へ（脱出）
     if (ball.y > bottomWall && ball.y < bottomWall + 20) {
-        if (ball.x < holeX || ball.x > holeX + holeWidth) {
-            ball.dy *= -1;
-        }
+        if (ball.x < holeX || ball.x > holeX + holeWidth) ball.dy *= -1;
     }
 
-    // 上壁（内部のみ）
     if (ball.y < topWall + wallThickness && ball.y > topWall) {
         ball.dy *= -1;
     }
 
-    // 左右壁（内部）
     if (
         ball.y > topWall &&
         ball.y < bottomWall &&
@@ -183,7 +220,6 @@ function collision(ball) {
         ball.dx *= -1;
     }
 
-    // パドル（外エリア）
     let paddleY = canvas.height - paddleHeight - 10;
     if (ball.y > paddleY - ballRadius) {
         if (ball.x > paddleX && ball.x < paddleX + paddleWidth) {
@@ -191,7 +227,7 @@ function collision(ball) {
         }
     }
 
-    // ブロック（内部のみ）
+    // ブロック
     if (ball.y > topWall && ball.y < bottomWall) {
         for (let c = 0; c < colCount; c++) {
             for (let r = 0; r < rowCount; r++) {
@@ -207,7 +243,7 @@ function collision(ball) {
                         b.status = 0;
                         destroyedCount++;
 
-                        if (destroyedCount % 10 === 0 && !itemActive) {
+                        if (destroyedCount % 8 === 0 && !itemActive) {
                             items.push({ x: b.x, y: b.y, dy: 2 });
                             itemActive = true;
                         }
@@ -225,11 +261,10 @@ function updateItems() {
 
         let paddleY = canvas.height - paddleHeight - 10;
 
-        if (
-            item.y > paddleY &&
+        if (item.y > paddleY &&
             item.x > paddleX &&
-            item.x < paddleX + paddleWidth
-        ) {
+            item.x < paddleX + paddleWidth) {
+
             let newBalls = [];
             balls.forEach(b => {
                 newBalls.push({ ...b });
@@ -260,7 +295,6 @@ function draw() {
     balls.forEach(ball => {
         drawBall(ball);
         collision(ball);
-
         ball.x += ball.dx;
         ball.y += ball.dy;
     });
@@ -273,6 +307,8 @@ function draw() {
     requestAnimationFrame(draw);
 }
 
+// スタート
+initStage();
 draw();
 </script>
 
